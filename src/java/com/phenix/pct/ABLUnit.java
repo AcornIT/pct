@@ -24,8 +24,10 @@ import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
+import java.util.Optional;
 
 import javax.xml.xpath.XPath;
+import javax.xml.xpath.XPathConstants;
 import javax.xml.xpath.XPathExpressionException;
 import javax.xml.xpath.XPathFactory;
 
@@ -34,6 +36,8 @@ import org.apache.tools.ant.Project;
 import org.apache.tools.ant.types.FileSet;
 import org.apache.tools.ant.types.Resource;
 import org.apache.tools.ant.types.resources.FileResource;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
 import org.xml.sax.InputSource;
 
 import com.google.gson.stream.JsonWriter;
@@ -212,6 +216,11 @@ public class ABLUnit extends PCTRun {
                     .parseInt(xpath.evaluate("/testsuites/@failures", inputSource));
             int numErrors = Integer.parseInt(xpath.evaluate("/testsuites/@errors", inputSource));
 
+            NodeList failedTestCases = (NodeList) xpath.evaluate("//testcase[@status='Failure' or @status='Error']", inputSource, XPathConstants.NODESET);
+            int numFails = failedTestCases.getLength();
+            for (int failedTestCaseIndex = 0; failedTestCaseIndex < numFails; failedTestCaseIndex++) {
+                logTestFailure(failedTestCases.item(failedTestCaseIndex));
+            }
             log(MessageFormat.format(Messages.getString("ABLUnit.1"), numTests, numFailures, numErrors));
 
             if (haltOnFailure && (numFailures + numErrors > 0))
@@ -234,5 +243,26 @@ public class ABLUnit extends PCTRun {
         if (getDebugPCT())
             return;
         deleteFile(json);
+    }
+
+    private void logTestFailure(Node failedTestCase) {
+        log(MessageFormat.format(Messages.getString("ABLUnit.2"),
+                getTestNodeAttribute(failedTestCase, "classname"),
+                getTestNodeAttribute(failedTestCase, "name")));
+
+        NodeList errors = failedTestCase.getChildNodes();
+        int numErrors = errors.getLength();
+        for (int errorIndex = 0; errorIndex < numErrors; errorIndex++) {
+            Node error = errors.item(errorIndex);
+            log(MessageFormat.format(Messages.getString("ABLUnit.3"),
+                    getTestNodeAttribute(error, "type"),
+                    getTestNodeAttribute(error, "message"),
+                    error.getTextContent().replace("\n", "\n\t"))); // the textContent is the error stack trace
+        }
+    }
+
+    private String getTestNodeAttribute(Node node, String attributeName) {
+        return Optional.ofNullable(node.getAttributes().getNamedItem(attributeName)).map(Node::getNodeValue)
+                .orElse("");
     }
 }
